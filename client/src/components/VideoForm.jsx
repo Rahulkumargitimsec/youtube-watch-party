@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { extractVideoId } from '../lib/youtube.js';
+import { extractVideoId, thumbnailUrl } from '../lib/youtube.js';
+import Icon from './Icons.jsx';
 
 export default function VideoForm({ mode, onChange }) {
   const [value, setValue] = useState('');
@@ -7,6 +8,8 @@ export default function VideoForm({ mode, onChange }) {
   const [busy, setBusy] = useState(false);
 
   if (mode === 'none') return null;
+
+  const previewId = extractVideoId(value);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -24,20 +27,34 @@ export default function VideoForm({ mode, onChange }) {
 
   return (
     <form className="video-form" onSubmit={submit}>
+      <div className="video-form-head">
+        <Icon name="film" size={16} />
+        <strong>{mode === 'request' ? 'Suggest the next video' : 'Change the video'}</strong>
+        <span className="muted">
+          {mode === 'request' ? 'The host or a moderator approves it first.' : 'Switches for everyone instantly.'}
+        </span>
+      </div>
       <div className="input-with-button">
-        <input
-          type="text"
-          inputMode="url"
-          placeholder="Paste a YouTube link to change the video…"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            if (error) setError('');
-          }}
-          aria-label="YouTube URL"
-        />
+        <div className={`url-input ${previewId ? 'has-preview' : ''}`}>
+          {previewId ? (
+            <img src={thumbnailUrl(previewId, 'default')} alt="" />
+          ) : (
+            <Icon name="link" size={16} className="url-input-icon" />
+          )}
+          <input
+            type="text"
+            inputMode="url"
+            placeholder="Paste a YouTube link…"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (error) setError('');
+            }}
+            aria-label="YouTube URL"
+          />
+        </div>
         <button type="submit" className="btn btn-primary" disabled={busy || !value.trim()}>
-          {mode === 'request' ? 'Request video' : 'Play video'}
+          {mode === 'request' ? 'Send request' : 'Play for everyone'}
         </button>
       </div>
       {error && <p className="field-error">{error}</p>}

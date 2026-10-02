@@ -23,6 +23,11 @@ export function extractVideoId(input) {
   return id && VIDEO_ID_RE.test(id) ? id : null;
 }
 
+/** Static thumbnail for a video id (no API key needed). */
+export function thumbnailUrl(videoId, quality = 'mqdefault') {
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/${quality}.jpg` : '';
+}
+
 export function formatTime(totalSeconds) {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
   const s = Math.floor(totalSeconds);

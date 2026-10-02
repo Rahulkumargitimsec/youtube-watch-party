@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AuthModal from '../components/AuthModal.jsx';
+import Icon, { ROLE_ICON } from '../components/Icons.jsx';
 import UserMenu from '../components/UserMenu.jsx';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
+import { ROLE_LABELS, timeAgo } from '../lib/format.js';
 import { storage } from '../lib/storage.js';
-import { extractVideoId } from '../lib/youtube.js';
+import { extractVideoId, thumbnailUrl } from '../lib/youtube.js';
+
+const SAMPLE_VIDEO = 'https://www.youtube.com/watch?v=U0EI7XFkkV4'; // project's default video
 
 /** Accepts a bare code ("K7PQ2M") or a full invite link (".../room/K7PQ2M"). */
 function parseRoomCode(input) {
@@ -15,21 +19,48 @@ function parseRoomCode(input) {
   return /^[A-Z0-9]{4,12}$/.test(code) ? code : null;
 }
 
+const ROLES = [
+  {
+    role: 'host',
+    text: 'Controls playback and manages the room: assigns roles, removes people and can transfer host.',
+    can: ['Play, pause and seek', 'Change video', 'Approve requests', 'Manage roles'],
+  },
+  {
+    role: 'moderator',
+    text: 'Controls playback and approves requests, but can’t change anyone’s role.',
+    can: ['Play, pause and seek', 'Change video', 'Approve requests'],
+  },
+  {
+    role: 'participant',
+    text: 'Can request play, pause, seek or a new video. A host or moderator approves it.',
+    can: ['Request changes', 'Chat and react'],
+  },
+  {
+    role: 'viewer',
+    text: 'Watches in sync. Can chat and react, but can’t request changes.',
+    can: ['Watch in sync', 'Chat and react'],
+  },
+];
+
 export default function Home() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const inviteCode = searchParams.get('join')?.toUpperCase() ?? '';
 
+  const [tab, setTab] = useState(inviteCode ? 'join' : 'create');
   const [roomName, setRoomName] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [roomCode, setRoomCode] = useState(inviteCode);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
+  const [recent, setRecent] = useState(() => storage.getRecentRooms());
   // Only logged-in users can create/join. If a guest tries, we ask them to log in
   // and then finish what they started (`pending`).
   const [authMode, setAuthMode] = useState(null); // 'login' | 'signup' | null
   const [pending, setPending] = useState(inviteCode ? 'join' : null); // 'create' | 'join' | null
+
+  const previewId = extractVideoId(videoUrl);
 
   // Opened from an invite link while logged out (/?join=CODE): ask to log in first.
   useEffect(() => {
@@ -61,8 +92,8 @@ export default function Home() {
     }
   };
 
-  const joinRoom = async () => {
-    const code = parseRoomCode(roomCode);
+  const joinRoom = async (codeInput = roomCode) => {
+    const code = parseRoomCode(codeInput);
     if (!code) {
       setError('Enter a valid room code or invite link.');
       return;
@@ -107,122 +138,246 @@ export default function Home() {
     if (!user) setPending(null);
   };
 
+  const switchTab = (next) => {
+    setTab(next);
+    setError('');
+  };
+
+  const forget = (roomId) => {
+    storage.forgetRoom(roomId);
+    setRecent(storage.getRecentRooms());
+  };
+
   return (
     <div className="home">
       <header className="home-nav">
         <Logo />
+        <nav className="home-links" aria-label="Sections">
+          <a href="#roles">Roles</a>
+        </nav>
         <UserMenu />
       </header>
 
-      <main className="home-main">
+      <main>
         <section className="hero">
-          <span className="eyebrow">Real-time · Synced · Together</span>
-          <h1>
-            Watch YouTube <span className="gradient-text">together</span>, perfectly in sync.
-          </h1>
-          <p>
-            Create a room, share the link, and every play, pause and seek happens for everyone at the same moment.
-            Hosts stay in control with roles and approvals.
-          </p>
-          <ul className="feature-list">
-            <li>⚡ WebSocket sync</li>
-            <li>👑 Host &amp; moderator roles</li>
-            <li>✋ Approval requests</li>
-            <li>💬 Live chat &amp; reactions</li>
-          </ul>
-        </section>
-
-        <section className="home-card">
-          {user ? (
-            <div className="signed-in">
-              <span className="signed-in-check" aria-hidden="true">
-                ✓
-              </span>
-              <div>
-                <strong>Signed in as {user.name}</strong>
-                <span className="muted">{user.email}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="auth-gate">
-              <strong>🔒 Log in to start watching</strong>
-              <span className="muted">You need an account to create or join a watch party.</span>
-              <div className="auth-gate-buttons">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAuthMode('login')}>
-                  Log in
-                </button>
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => setAuthMode('signup')}>
-                  Sign up
-                </button>
-              </div>
-            </div>
-          )}
-
-          <form className="home-form" onSubmit={submit('create')}>
-            <h2>Start a watch party</h2>
-            <label className="field">
-              <span>
-                Room name <span className="required">*</span>
-              </span>
-              <input
-                type="text"
-                value={roomName}
-                required
-                minLength={2}
-                maxLength={40}
-                placeholder="Friday movie night"
-                onChange={(e) => setRoomName(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Starting video (optional)</span>
-              <input
-                type="text"
-                value={videoUrl}
-                placeholder="https://www.youtube.com/watch?v=…"
-                onChange={(e) => setVideoUrl(e.target.value)}
-              />
-            </label>
-            <button type="submit" className="btn btn-primary btn-block" disabled={Boolean(busy)}>
-              {busy === 'create' ? 'Creating…' : user ? 'Create room' : '🔒 Log in to create room'}
-            </button>
-          </form>
-
-          <div className="divider">
-            <span>or join one</span>
+          <div className="hero-copy">
+            <h1>Watch YouTube together, in sync.</h1>
+            <p className="hero-sub">
+              Create a room, share the code, and everyone sees the same moment of the same video. The host controls
+              playback; everyone else can chat, react and request changes.
+            </p>
+            <ul className="hero-points">
+              <li>
+                <Icon name="check" size={16} /> Play, pause and seek sync for everyone
+              </li>
+              <li>
+                <Icon name="check" size={16} /> Host, moderator, participant and viewer roles
+              </li>
+              <li>
+                <Icon name="check" size={16} /> Requests the host can approve or decline
+              </li>
+            </ul>
           </div>
 
-          <form className="home-form" onSubmit={submit('join')}>
-            <div className="input-with-button">
-              <input
-                type="text"
-                value={roomCode}
-                placeholder="Room code or invite link"
-                aria-label="Room code or invite link"
-                onChange={(e) => setRoomCode(e.target.value)}
-              />
-              <button type="submit" className="btn btn-secondary" disabled={Boolean(busy)}>
-                {busy === 'join' ? 'Joining…' : user ? 'Join' : '🔒 Join'}
-              </button>
-            </div>
-          </form>
+          <section className="action-card" aria-label="Start or join a watch party">
+            {user ? (
+              <div className="account-strip">
+                <Icon name="check" size={16} />
+                <span>
+                  Signed in as <strong>{user.name}</strong>
+                </span>
+              </div>
+            ) : (
+              <div className="account-strip is-guest">
+                <Icon name="lock" size={16} />
+                <span>Sign in to create or join rooms.</span>
+                <button type="button" className="link-btn" onClick={() => setAuthMode('signup')}>
+                  Create account
+                </button>
+              </div>
+            )}
 
-          {error && <p className="form-error">{error}</p>}
+            <div className="segmented" role="tablist" aria-label="Choose an action">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'create'}
+                className={tab === 'create' ? 'active' : ''}
+                onClick={() => switchTab('create')}
+              >
+                <Icon name="plus" size={15} /> Start a party
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'join'}
+                className={tab === 'join' ? 'active' : ''}
+                onClick={() => switchTab('join')}
+              >
+                <Icon name="arrowRight" size={15} /> Join with code
+              </button>
+              <span className="segmented-thumb" data-tab={tab} aria-hidden="true" />
+            </div>
+
+            {tab === 'create' ? (
+              <form className="home-form" onSubmit={submit('create')}>
+                <label className="field">
+                  <span>Room name</span>
+                  <input
+                    type="text"
+                    value={roomName}
+                    required
+                    minLength={2}
+                    maxLength={40}
+                    placeholder="Friday movie night"
+                    onChange={(e) => setRoomName(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-row">
+                    Starting video <em>optional</em>
+                    {!videoUrl && (
+                      <button type="button" className="link-btn" onClick={() => setVideoUrl(SAMPLE_VIDEO)}>
+                        Use a sample
+                      </button>
+                    )}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="url"
+                    value={videoUrl}
+                    placeholder="Paste a YouTube link"
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                  />
+                </label>
+                {previewId && (
+                  <div className="video-chip">
+                    <img src={thumbnailUrl(previewId, 'default')} alt="" />
+                    <span>
+                      <strong>Video ready</strong>
+                      <code>{previewId}</code>
+                    </span>
+                    <Icon name="check" size={16} className="video-chip-ok" />
+                  </div>
+                )}
+                <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={Boolean(busy)}>
+                  {busy === 'create' ? (
+                    'Opening room…'
+                  ) : (
+                    <>
+                      {user ? 'Create room' : 'Sign in & create room'} <Icon name="arrowRight" size={17} />
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form className="home-form" onSubmit={submit('join')}>
+                <label className="field">
+                  <span>Room code or invite link</span>
+                  <input
+                    type="text"
+                    className="code-input"
+                    value={roomCode}
+                    placeholder="K7PQ2M"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    onChange={(e) => setRoomCode(e.target.value)}
+                  />
+                </label>
+                <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={Boolean(busy)}>
+                  {busy === 'join' ? (
+                    'Joining…'
+                  ) : (
+                    <>
+                      {user ? 'Join room' : 'Sign in & join'} <Icon name="arrowRight" size={17} />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {error && (
+              <p className="form-error" role="alert">
+                <Icon name="alert" size={15} /> {error}
+              </p>
+            )}
+
+            {user && recent.length > 0 && (
+              <div className="recent">
+                <span className="recent-title">Jump back in</span>
+                <ul>
+                  {recent.slice(0, 3).map((r) => (
+                    <li key={r.roomId}>
+                      <button type="button" className="recent-room" onClick={() => joinRoom(r.roomId)}>
+                        <span className="recent-thumb">
+                          {r.videoId ? <img src={thumbnailUrl(r.videoId, 'default')} alt="" /> : <Icon name="film" />}
+                        </span>
+                        <span className="recent-text">
+                          <strong>{r.name || r.roomId}</strong>
+                          <span>
+                            <code>{r.roomId}</code>
+                            {r.role && ` · ${ROLE_LABELS[r.role]}`} · {timeAgo(r.ts)}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn recent-forget"
+                        aria-label={`Forget ${r.name || r.roomId}`}
+                        onClick={() => forget(r.roomId)}
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
         </section>
+
+        <section className="roles" id="roles">
+          <h2>Roles and permissions</h2>
+          <p className="section-sub">Every action is checked on the server, so the rules hold for everyone in the room.</p>
+          <div className="role-grid">
+            {ROLES.map((r) => (
+              <article key={r.role} className={`role-card role-card-${r.role}`}>
+                <span className="role-card-icon">
+                  <Icon name={ROLE_ICON[r.role]} size={20} />
+                </span>
+                <h3>{ROLE_LABELS[r.role]}</h3>
+                <p>{r.text}</p>
+                <ul>
+                  {r.can.map((c) => (
+                    <li key={c}>
+                      <Icon name="check" size={13} /> {c}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
       </main>
+
+      <footer className="home-footer">
+        <Logo />
+        <span>© {new Date().getFullYear()} WatchParty</span>
+      </footer>
 
       {authMode && <AuthModal mode={authMode} onClose={closeAuth} />}
     </div>
   );
 }
 
-export function Logo() {
+export function Logo({ compact = false }) {
   return (
-    <a className="logo" href="/">
+    <Link className="logo" to="/" aria-label="WatchParty home">
       <span className="logo-mark" aria-hidden="true">
-        ▶
+        <Icon name="play" size={13} />
       </span>
-      WatchParty
-    </a>
+      {!compact && <span className="logo-word">WatchParty</span>}
+    </Link>
   );
 }

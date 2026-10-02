@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Icon from './Icons.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { useToast } from './Toasts.jsx';
 
@@ -64,10 +65,13 @@ export default function AuthModal({ mode: initialMode, onClose }) {
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="modal card" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="auth-title">
         <button type="button" className="icon-btn modal-close" onClick={onClose} aria-label="Close">
-          ✕
+          <Icon name="x" size={16} />
         </button>
 
         <div className="modal-head">
+          <span className="modal-mark" aria-hidden="true">
+            <Icon name="play" size={16} />
+          </span>
           <h2 id="auth-title">{isSignup ? 'Create your account' : 'Welcome back'}</h2>
           <p className="muted">
             {isSignup

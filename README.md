@@ -48,6 +48,16 @@ A real-time **YouTube Watch Party** where everyone in a room sees the same video
 - ✅ **Clock-offset + drift correction** for tight sync
 - ✅ Rate limiting, input validation, automated tests (unit + real-WebSocket integration)
 
+### Experience & sync polish
+
+- 🎯 **Live sync meter** — every player shows how far (ms) it is from the room's position, plus server round-trip latency in the header.
+- ⚡ **Tighter sync** — players re-sync once playback actually starts after buffering (late joiners land within ~150 ms instead of ~1 s), and paused players snap to the exact frame.
+- 🔗 **Easy invites** — one-click copy of the room code or invite link.
+- 🎬 **Theater mode**, YouTube-style **ambient glow**, double-click for fullscreen.
+- 🖼️ **Video previews** — thumbnails while pasting links, on change-video requests, and in "Now playing".
+- 🕘 **Jump back in** — recently visited rooms on the home page.
+- 📱 Fully responsive, `prefers-reduced-motion` aware.
+
 ---
 
 ## 🏗️ Architecture

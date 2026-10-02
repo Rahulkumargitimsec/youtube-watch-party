@@ -1,7 +1,7 @@
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 // Big Buck Bunny (Blender Foundation) — freely embeddable, used as the default video.
-export const DEFAULT_VIDEO_ID = 'aqz-KE-bpKQ';
+export const DEFAULT_VIDEO_ID = 'U0EI7XFkkV4';
 
 /**
  * Accepts a raw 11-char video id or any common YouTube URL

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth.jsx';
 import AuthModal from './AuthModal.jsx';
+import Icon from './Icons.jsx';
 import { Avatar } from './ParticipantList.jsx';
 import { useToast } from './Toasts.jsx';
 
@@ -46,9 +47,9 @@ export default function UserMenu({ compact = false }) {
       >
         <Avatar name={user.name} size={30} />
         {!compact && <span className="user-chip-name">{user.name}</span>}
-        <span aria-hidden="true" className="chevron">
-          ▾
-        </span>
+        <svg className="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {open && (
@@ -70,7 +71,7 @@ export default function UserMenu({ compact = false }) {
               notify('You have been logged out.', 'info');
             }}
           >
-            Log out
+            <Icon name="logout" size={15} /> Log out
           </button>
         </div>
       )}

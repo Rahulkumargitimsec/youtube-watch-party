@@ -39,4 +39,24 @@ export const storage = {
     }
   },
   setAuth: (session) => (session ? safe.set('wp:auth', JSON.stringify(session)) : safe.remove('wp:auth')),
+
+  // Rooms this browser visited, newest first: [{ roomId, name, videoId, role, ts }]
+  getRecentRooms: () => {
+    try {
+      const list = JSON.parse(safe.get('wp:recent'));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  },
+  rememberRoom: (entry) => {
+    const all = storage.getRecentRooms();
+    const previous = all.find((r) => r.roomId === entry.roomId);
+    const rest = all.filter((r) => r.roomId !== entry.roomId);
+    const merged = { ...previous, ...Object.fromEntries(Object.entries(entry).filter(([, v]) => v != null)) };
+    safe.set('wp:recent', JSON.stringify([{ ...merged, ts: Date.now() }, ...rest].slice(0, 6)));
+  },
+  forgetRoom: (roomId) => {
+    safe.set('wp:recent', JSON.stringify(storage.getRecentRooms().filter((r) => r.roomId !== roomId)));
+  },
 };

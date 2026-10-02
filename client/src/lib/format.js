@@ -7,7 +7,7 @@ export const ROLE_LABELS = {
   viewer: 'Viewer',
 };
 
-const AVATAR_COLORS = ['#f97316', '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899', '#eab308', '#14b8a6', '#6366f1'];
+const AVATAR_COLORS = ['#f2a65a', '#7fb4f0', '#8fd19e', '#f08c8f', '#b49cf0', '#6fcfc4', '#e8c66a', '#d9a3c8'];
 
 export function avatarColor(seed = '') {
   let hash = 0;
@@ -56,4 +56,14 @@ export function describeSync(action) {
 
 export function timeOfDay(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "just now", "5 min ago", "3 h ago", "2 d ago" */
+export function timeAgo(ts) {
+  const minutes = Math.round((Date.now() - ts) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
 }

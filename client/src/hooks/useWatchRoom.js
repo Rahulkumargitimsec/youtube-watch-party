@@ -26,6 +26,7 @@ export function useWatchRoom(roomId, username, authToken = null) {
   const [rolePermissions, setRolePermissions] = useState({});
   const [reactionOptions, setReactionOptions] = useState([]);
   const [clockOffset, setClockOffset] = useState(0);
+  const [latency, setLatency] = useState(null); // round-trip time to the server, ms
 
   const socketRef = useRef(null);
   const selfIdRef = useRef(null);
@@ -36,15 +37,17 @@ export function useWatchRoom(roomId, username, authToken = null) {
     const socket = createSocket(authToken);
     socketRef.current = socket;
     let disposed = false;
+    const roomNameRef = { current: '' };
 
     const addMessage = (message) => setMessages((list) => [...list, message].slice(-200));
     const addSystem = (text) => addMessage(systemMessage(text));
 
     // (Re)join on every connect — this also handles automatic reconnects.
     const join = async () => {
-      const { offset } = await measureClockOffset(socket);
+      const { offset, rtt } = await measureClockOffset(socket);
       if (disposed) return;
       setClockOffset(offset);
+      setLatency(rtt);
 
       // The server takes the name from the logged-in account (JWT in the handshake).
       const res = await emitAck(socket, 'join_room', { roomId, token: storage.getToken(roomId) });
@@ -77,7 +80,21 @@ export function useWatchRoom(roomId, username, authToken = null) {
         return [...state.chat, ...system].sort((a, b) => a.ts - b.ts).slice(-200);
       });
       setStatus('joined');
+      roomNameRef.current = state.room?.name ?? '';
+      storage.rememberRoom({
+        roomId,
+        name: roomNameRef.current,
+        videoId: state.playback?.videoId,
+        role: state.participants.find((p) => p.userId === state.self.userId)?.role,
+      });
     };
+
+    // Keep the latency readout fresh (the clock offset itself stays as measured on join).
+    const pingTimer = setInterval(async () => {
+      if (!socket.connected) return;
+      const { rtt } = await measureClockOffset(socket, 1);
+      if (!disposed && rtt) setLatency(rtt);
+    }, 10_000);
 
     socket.on('connect', join);
     socket.on('disconnect', (reason) => {
@@ -91,6 +108,9 @@ export function useWatchRoom(roomId, username, authToken = null) {
 
     socket.on('sync_state', (state) => {
       setPlayback(state);
+      if (state.action?.type === 'change_video') {
+        storage.rememberRoom({ roomId, name: roomNameRef.current, videoId: state.videoId });
+      }
       const text = describeSync(state.action);
       if (text) addSystem(text);
     });
@@ -153,6 +173,7 @@ export function useWatchRoom(roomId, username, authToken = null) {
 
     return () => {
       disposed = true;
+      clearInterval(pingTimer);
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
@@ -216,6 +237,7 @@ export function useWatchRoom(roomId, username, authToken = null) {
     reactions,
     reactionOptions,
     clockOffset,
+    latency,
     actions,
   };
 }

@@ -1,10 +1,13 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import Icon from './Icons.jsx';
 import { describePlayerError, expectedTime, loadYouTubeApi, PLAYER_STATE } from '../lib/youtube.js';
 
 // How far (seconds) a client may drift before we correct it.
 const HARD_SYNC_THRESHOLD = 0.4; // right after a server event (play/pause/seek)
 const SOFT_SYNC_THRESHOLD = 1.2; // periodic drift check while playing
 const DRIFT_CHECK_MS = 1000;
+const START_FIX_GRACE_MS = 2000;
+const PAUSED_SYNC_THRESHOLD = 0.1;
 
 /**
  * Wraps the YouTube IFrame Player API and keeps it locked to the room state.
@@ -22,6 +25,8 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
   const playbackRef = useRef(playback);
   const offsetRef = useRef(clockOffset);
   const interactedRef = useRef(false);
+  const lastStartFixRef = useRef(0); // last post-buffering correction (at most one per grace period)
+  const syncRef = useRef(null);
 
   const [ready, setReady] = useState(false);
   const [interacted, setInteracted] = useState(false);
@@ -62,6 +67,13 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
             onReady: () => !cancelled && setReady(true),
             onStateChange: (e) => {
               if (e.data === PLAYER_STATE.PLAYING || e.data === PLAYER_STATE.CUED) reportInfo();
+              // Starting playback (or recovering from buffering) costs time the room didn't wait for:
+              // re-check with the tight threshold — at most once per grace period, so a correction
+              // that itself buffers can't start a seek loop.
+              if (e.data === PLAYER_STATE.PLAYING && Date.now() - lastStartFixRef.current > START_FIX_GRACE_MS) {
+                lastStartFixRef.current = Date.now();
+                syncRef.current?.(HARD_SYNC_THRESHOLD);
+              }
             },
             onError: (e) => setVideoError(describePlayerError(e.data)),
           },
@@ -113,7 +125,8 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
 
     if (!state.isPlaying) {
       if (playerState === PLAYER_STATE.PLAYING || playerState === PLAYER_STATE.BUFFERING) player.pauseVideo();
-      if (drift > threshold) {
+      // Seeking a paused video is invisible, so paused players snap to the exact frame.
+      if (drift > Math.min(threshold, PAUSED_SYNC_THRESHOLD)) {
         // seekTo() on a cued video would start playback, so re-cue at the new spot instead.
         if (notStarted) {
           cuedAtRef.current = clamped;
@@ -130,6 +143,8 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
     if (drift > threshold) player.seekTo(clamped, true);
     if (playerState !== PLAYER_STATE.PLAYING && playerState !== PLAYER_STATE.BUFFERING) player.playVideo();
   }, []);
+
+  syncRef.current = syncToRoom;
 
   // Every server update applies with a tight threshold…
   useEffect(() => {
@@ -165,6 +180,8 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
         else frameRef.current?.requestFullscreen?.();
       },
       resync: () => syncToRoom(0.25),
+      hasStarted: () => interactedRef.current,
+      getState: () => playerRef.current?.getPlayerState?.(),
     }),
     [syncToRoom],
   );
@@ -172,13 +189,18 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
   return (
     <div className="player-frame" ref={frameRef}>
       <div className="player-mount" ref={mountRef} />
-      <div className="player-shield" aria-hidden="true" />
+      <div
+        className="player-shield"
+        aria-hidden="true"
+        onDoubleClick={() => (document.fullscreenElement ? document.exitFullscreen?.() : frameRef.current?.requestFullscreen?.())}
+      />
 
       {children}
 
       {(loadError || videoError) && (
         <div className="player-overlay player-error">
-          <strong>⚠️ {loadError ? 'Player unavailable' : 'Video unavailable'}</strong>
+          <Icon name="alert" size={28} />
+          <strong>{loadError ? 'Player unavailable' : 'Video unavailable'}</strong>
           <span>{loadError || videoError}</span>
         </div>
       )}
@@ -186,14 +208,19 @@ const YouTubePlayer = forwardRef(function YouTubePlayer({ playback, clockOffset,
       {!interacted && !loadError && (
         <button type="button" className="player-overlay player-start" onClick={startWatching}>
           <span className="play-disc" aria-hidden="true">
-            ▶
+            <Icon name="play" size={30} />
           </span>
-          <strong>{playback?.isPlaying ? 'The party is already watching' : 'Ready when you are'}</strong>
-          <span>Click to join playback in sync with the room</span>
+          <strong>{playback?.isPlaying ? 'This room is already playing' : 'Join playback'}</strong>
+          <span>Click to sync with the room</span>
         </button>
       )}
 
-      {!ready && !loadError && interacted && <div className="player-overlay">Loading player…</div>}
+      {!ready && !loadError && interacted && (
+        <div className="player-overlay">
+          <span className="spinner" />
+          Loading player…
+        </div>
+      )}
     </div>
   );
 });
