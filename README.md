@@ -1,62 +1,69 @@
-# 🎬 WatchParty — Watch YouTube Together, in Sync
+# WatchParty — Watch YouTube Together, in Sync
 
-A real-time **YouTube Watch Party** where everyone in a room sees the same video at the same moment. When the host plays, pauses, seeks or changes the video, every participant follows instantly — over **WebSockets**.
+A real-time **YouTube Watch Party**: everyone in a room sees the same video at the same moment. When the host plays, pauses, seeks or changes the video, every participant follows instantly over **WebSockets**.
 
-**Live demo:** `https://<your-app>.onrender.com` ← _replace after deploying (see [Deployment](#-deployment))_
+### 🔗 Live app: **https://youtube-watch-party-production-8589.up.railway.app/**
+
+Deployed on **Railway** as a single service: Express serves the REST API, the Socket.IO WebSocket server and the built React app from the same URL.
 
 | Layer     | Technology                                                    |
 | --------- | ------------------------------------------------------------- |
 | Frontend  | **React 18** + Vite + React Router                            |
 | Backend   | **Node.js** + **Express 5**                                   |
 | Real-time | **WebSockets** via **Socket.IO 4**                            |
-| Database  | **MongoDB** (Mongoose) — users, rooms, members, roles, chat   |
+| Database  | **MongoDB** (Mongoose): users, rooms, members, roles, chat    |
 | Auth      | Email + password, **scrypt** hashing, **JWT** (jsonwebtoken)  |
 | Video     | **YouTube IFrame Player API**                                 |
-| Hosting   | Render (single service: API + WebSocket + React build)        |
+| Hosting   | **Railway** (one service: API + WebSocket + React build)      |
+
+**Try it:** open the live link, sign up, create a room, then open the invite link in a second browser (or an incognito window) with another account. Rooms created without a link start with the default video [`U0EI7XFkkV4`](https://www.youtube.com/watch?v=U0EI7XFkkV4).
 
 ---
 
-## ✨ Features
+## ✅ Assignment checklist
 
-### Core requirements
+How each requirement of the brief is met:
 
-- **Rooms** — create a room with a (required) room name (you become **Host**) or join via **room code / invite link** (you become **Participant**).
-- **Real-time sync** — play, pause, seek and change-video are synchronized for everyone. Late joiners start at the exact current position.
-- **YouTube integration** — paste any YouTube link (`watch?v=`, `youtu.be`, `shorts`, `embed`, `live`) or an 11-char id.
-- **Role-based access control**, enforced **on the server** for every event:
+| Requirement | Where / how |
+| --- | --- |
+| **Real-time sync** of play/pause, seek position and current video | Server-authoritative `PlaybackState`; every change is broadcast as `sync_state`; clients correct clock offset and drift (see [Sync](#how-sync-stays-accurate)) |
+| **Room-based model** with unique links/codes | 6-character room codes; `/room/:code` invite links; one-click copy in the room header |
+| **YouTube integration** | YouTube IFrame Player API, controlled only through our server; accepts `watch?v=`, `youtu.be`, `shorts`, `embed`, `live` links or an 11-char id |
+| **WebSockets** | Socket.IO over a real WebSocket transport (long-polling only as a fallback) |
+| **Role-based access**: host assigns roles | Host, Moderator, Participant, Viewer, enforced on the server for every event |
+| Creator becomes **Host**; joiners are **Participant** by default | `RoomManager.createRoom` / `Room.join` |
+| Host can **assign roles** (Participant → Moderator) | `assign_role` → `role_assigned` broadcast |
+| Host can **remove participants** | `remove_participant` → `participant_removed`; the removed user can't rejoin |
+| Host can **transfer host** | `transfer_host` → `host_transferred` (also automatic if the host leaves) |
+| Playback controls restricted to **Host and Moderator** | `authorize(actor, CONTROL_PLAYBACK / CHANGE_VIDEO)` in `Room`; others get `FORBIDDEN` |
+| **Participant must request approval** for changes | `request_change` → queued → Host/Moderator `resolve_request` approves or declines |
+| **Backend validates permissions** before processing | `server/src/core/permissions.js` + `Room` methods; the UI also disables restricted controls |
+| **Role updates broadcast** so the UI can show roles | `role_assigned`, `host_transferred`, `participants_update` |
+| Participant list with roles | People tab: roles, online/reconnecting status, host management menu |
+| Basic chat (bonus) | Room chat with history |
+| **Deployed publicly** | Railway, see [Deployment](#-deployment-railway) |
+| README with setup, run instructions and live URL | This file |
+| Architecture overview | [Architecture](#-architecture) below + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 
-  | Role            | Play / Pause / Seek | Change video | Approve requests | Assign roles / Remove / Transfer host | Request changes | Chat & react |
-  | --------------- | :-----------------: | :----------: | :--------------: | :-----------------------------------: | :-------------: | :----------: |
-  | 👑 **Host**      | ✅                   | ✅            | ✅                | ✅                                     | —               | ✅            |
-  | 🛡️ **Moderator** | ✅                   | ✅            | ✅                | ❌                                     | —               | ✅            |
-  | **Participant** | ❌                   | ❌            | ❌                | ❌                                     | ✅               | ✅            |
-  | 👁️ **Viewer**    | ❌                   | ❌            | ❌                | ❌                                     | ❌               | ✅            |
+### Bonus ideas implemented
 
-- **Host powers** — assign roles (Participant ⇄ Moderator ⇄ Viewer), remove participants, transfer host.
-- **Approval flow** — a Participant's play/pause/seek/change-video becomes a **request**; it only takes effect when a Host or Moderator approves it.
-- **Participant list** with roles and live online/reconnecting status.
-
-### Bonus features implemented
-
-- ✅ **Authentication (login before joining)** — **Log in / Sign up** (name, email, password) in the top-right corner. **Only logged-in users can create or join rooms** — enforced on the server for both `POST /api/rooms` and the `join_room` WebSocket event. Opening an invite link while logged out asks you to log in, then joins the room automatically. Your account name is used in rooms, you get a ✓ badge, and your **seat & role follow you to any device** (a host can reopen their room from another laptop and is still host).
-- ✅ **OOP WebSocket server** — `Room`, `Participant`, `PlaybackState`, `RoomManager`, `MessageHandler` classes
-- ✅ **Persistent rooms** in MongoDB (state, members & roles, chat) — survive server restarts, auto-expire after 7 days idle (TTL index)
+- ✅ **OOP WebSocket server**: `Room`, `Participant`, `PlaybackState`, `RoomManager` and `MessageHandler` classes
+- ✅ **Persistent rooms** in MongoDB (state, members, roles, chat). They survive restarts and expire after 7 days idle (TTL index)
+- ✅ **Authentication**: only logged-in users can create or join rooms (checked on `POST /api/rooms` and on the `join_room` WebSocket event). Your seat and role follow you to any device
 - ✅ **Text chat** with history
 - ✅ **Emoji reactions** floating over the video for everyone
-- ✅ **Transfer host** + **automatic host hand-over** if the host leaves
-- ✅ **Reconnect-safe identity** — refresh the page and you keep your seat and role (secret session token, hashed in DB)
-- ✅ **Clock-offset + drift correction** for tight sync
-- ✅ Rate limiting, input validation, automated tests (unit + real-WebSocket integration)
+- ✅ **Transfer host**, plus automatic host hand-over if the host leaves
+- ✅ **Reconnect-safe identity**: refresh the page and you keep your seat and role
+- ✅ **Scalability notes**: see [Design decisions](#-design-decisions--trade-offs)
 
-### Experience & sync polish
+### Extras
 
-- 🎯 **Live sync meter** — every player shows how far (ms) it is from the room's position, plus server round-trip latency in the header.
-- ⚡ **Tighter sync** — players re-sync once playback actually starts after buffering (late joiners land within ~150 ms instead of ~1 s), and paused players snap to the exact frame.
-- 🔗 **Easy invites** — one-click copy of the room code or invite link.
-- 🎬 **Theater mode**, YouTube-style **ambient glow**, double-click for fullscreen.
-- 🖼️ **Video previews** — thumbnails while pasting links, on change-video requests, and in "Now playing".
-- 🕘 **Jump back in** — recently visited rooms on the home page.
-- 📱 Fully responsive, `prefers-reduced-motion` aware.
+- **Live sync meter**: every player shows how many milliseconds it is from the room's position, and the header shows the round-trip latency to the server.
+- **Tight sync**: players re-sync as soon as playback starts after buffering (late joiners land within ~150 ms) and paused players snap to the exact frame.
+- **Easy invites**: one-click copy of the room code or the invite link.
+- **Video previews**: thumbnails while pasting links, on change-video requests and in "Now playing".
+- **Theater mode**, double-click for fullscreen, "Jump back in" list of recent rooms.
+- Fully responsive; respects `prefers-reduced-motion`.
 
 ---
 
@@ -72,8 +79,8 @@ flowchart LR
     Hook -- sync_state --> YT
   end
 
-  subgraph Server["Node.js server"]
-    REST[Express REST<br/>POST /api/rooms<br/>GET /api/rooms/:id]
+  subgraph Server["Node.js server (Railway)"]
+    REST[Express REST<br/>auth · rooms · health]
     WS[Socket.IO server]
     MH[MessageHandler<br/>ack · rate-limit · context]
     RM[RoomManager<br/>load · cache · save]
@@ -91,29 +98,29 @@ flowchart LR
 
 ### How WebSockets drive the flow
 
-0. **Login (optional)** — `POST /api/auth/login` returns a **JWT**. The client sends it as `Authorization: Bearer …` on REST calls and in the Socket.IO handshake (`auth: { token }`), where an `io.use()` middleware verifies it.
-1. **Create** — `POST /api/rooms` creates the room in MongoDB and returns a secret **session token** that identifies the creator as Host (and links the room to their account if logged in).
-2. **Join** — the client opens a WebSocket and sends `join_room { roomId, username, token }`. The server returns the full room state in the acknowledgement and broadcasts `user_joined` to the room.
-3. **Control** — a Host/Moderator emits `play` / `pause` / `seek` / `change_video`. The server **checks the role**, updates the authoritative `PlaybackState`, and broadcasts `sync_state` to everyone (including the sender).
-4. **Apply** — every client (including the one who clicked) applies `sync_state` to its YouTube player. There is exactly **one source of truth: the server**.
-5. **Requests** — a Participant emits `request_change`; hosts/moderators receive `requests_update`; `resolve_request` approves (→ `sync_state`) or declines, and the requester gets `request_resolved`.
+1. **Login.** `POST /api/auth/login` returns a **JWT**. The client sends it as `Authorization: Bearer …` on REST calls and in the Socket.IO handshake (`auth: { token }`), where an `io.use()` middleware verifies it.
+2. **Create.** `POST /api/rooms` creates the room and returns a secret **session token** that identifies the creator as Host.
+3. **Join.** The client opens a WebSocket and sends `join_room { roomId, token }`; the username comes from the verified account. The server replies with the full room state in the acknowledgement and broadcasts `user_joined` to the room.
+4. **Control.** A Host/Moderator emits `play` / `pause` / `seek` / `change_video`. The server **checks the role**, updates the authoritative `PlaybackState`, and broadcasts `sync_state` to everyone, including the sender.
+5. **Apply.** Every client applies `sync_state` to its YouTube player. There is exactly **one source of truth: the server**.
+6. **Requests.** A Participant emits `request_change`; hosts and moderators receive `requests_update`; `resolve_request` approves (→ `sync_state`) or declines, and the requester gets `request_resolved`.
 
 ### How sync stays accurate
 
-- The server stores `{ videoId, isPlaying, position, updatedAt }` rather than a ticking clock. The live position is `position + (now − updatedAt)` while playing.
+- The server stores `{ videoId, isPlaying, position, updatedAt }` rather than a ticking clock. While playing, the live position is `position + (now − updatedAt)`.
 - Each `sync_state` carries `serverTime`. Clients measure their **clock offset** to the server (NTP-style `time_sync` ping, best of 4) and compute where the video *should* be right now: `currentTime + (clientNow + offset − serverTime)`.
-- The player corrects if it's more than **0.4 s** off after an event, and a background **drift check every second** re-syncs anyone more than **1.2 s** off (buffering, slow devices).
-- The YouTube iframe has `controls: 0` and a transparent shield, so nobody can change playback locally — every change goes through the server.
+- After every event the player corrects itself if it is more than **0.4 s** off. When playback actually starts after buffering it re-checks once more, and a background **drift check every second** re-syncs anyone more than **1.2 s** off. Paused players snap to within **0.1 s**.
+- The YouTube iframe has `controls: 0` and a transparent shield on top, so nobody can change playback locally; every change goes through the server.
 
 ### WebSocket events
 
 | Event                                     | Direction       | Payload                                               | Who                     |
 | ----------------------------------------- | --------------- | ----------------------------------------------------- | ----------------------- |
-| `join_room`                               | Client → Server | `{ roomId, username, token? }` → ack `{ token, state }` | anyone                  |
+| `join_room`                               | Client → Server | `{ roomId, token? }` → ack `{ token, state }`         | logged-in users         |
 | `leave_room`                              | Client → Server | `{}`                                                  | anyone                  |
 | `play` / `pause`                          | Client → Server | `{}`                                                  | Host, Moderator         |
 | `seek`                                    | Client → Server | `{ time }`                                            | Host, Moderator         |
-| `change_video`                            | Client → Server | `{ url \| videoId }`                                  | Host, Moderator         |
+| `change_video`                            | Client → Server | `{ videoId }` or `{ url }`                            | Host, Moderator         |
 | `request_change`                          | Client → Server | `{ type, payload }`                                   | Participant             |
 | `resolve_request`                         | Client → Server | `{ requestId, approve }`                              | Host, Moderator         |
 | `cancel_request`                          | Client → Server | `{ requestId }`                                       | request owner           |
@@ -133,6 +140,8 @@ flowchart LR
 | `removed_from_room`                       | Server → User   | `{ by }`                                              |                         |
 | `chat_message` / `reaction`               | Server → Room   | message / reaction                                    |                         |
 
+Every client → server event uses a Socket.IO **acknowledgement**: the server always replies `{ ok: true, ... }` or `{ ok: false, error: { code, message } }`, e.g. `FORBIDDEN` when a Participant tries to `play`.
+
 ### REST endpoints
 
 | Method & path            | Purpose                                            |
@@ -140,13 +149,29 @@ flowchart LR
 | `POST /api/auth/signup`  | `{ name, email, password }` → `{ token, user }`    |
 | `POST /api/auth/login`   | `{ email, password }` → `{ token, user }`          |
 | `GET /api/auth/me`       | Validate a JWT → `{ user }`                        |
-| `POST /api/rooms`        | **Login required.** `{ roomName, videoUrl? }` → `{ roomId, token }` (room name required) |
+| `POST /api/rooms`        | **Login required.** `{ roomName, videoUrl? }` → `{ roomId, token }` |
 | `GET /api/rooms/:roomId` | Room summary (used by the join form / invite link) |
-| `GET /api/health`        | Health check (storage type, live rooms)            |
-
-Every client → server event uses a Socket.IO **acknowledgement**: the server always replies `{ ok: true, ... }` or `{ ok: false, error: { code, message } }` (e.g. `FORBIDDEN` when a Participant tries to `play`).
+| `GET /api/health`        | Health check: storage type, live rooms, uptime (Railway uses it) |
 
 More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
+## 🧰 How each library is used
+
+| Library / tool | Where | What it does here |
+| --- | --- | --- |
+| **React** | `client/src` | UI as components; `useWatchRoom` turns socket events into React state |
+| **Vite** | `client/` | Dev server with hot reload; production build into `client/dist`. In dev it proxies `/api` and `/socket.io` to the Node server |
+| **React Router** | `client/src/main.jsx` | `/` (create/join) and `/room/:roomId` (invite links) |
+| **socket.io-client** | `client/src/lib/socket.js` | Opens the WebSocket, sends the JWT in the handshake, auto-reconnects, `emitWithAck` for request/response |
+| **YouTube IFrame API** | `client/src/components/YouTubePlayer.jsx` | Embeds the player and applies `sync_state` (`loadVideoById`, `seekTo`, `playVideo`, `pauseVideo`) |
+| **Express 5** | `server/src/app.js`, `routes/` | REST API and serves the built React app |
+| **Socket.IO** | `server/src/app.js`, `socket/MessageHandler.js` | WebSocket server; Socket.IO rooms (`io.to(roomId)`) for broadcasting; acknowledgements for every event |
+| **Mongoose / MongoDB** | `server/src/db/` | Users and rooms (state, members, roles, chat); TTL index expires idle rooms |
+| **jsonwebtoken** | `server/src/auth/` | Signs and verifies login tokens (REST + WebSocket handshake) |
+| **node:crypto** | `server/src/auth/` | `scrypt` password hashing, random session tokens (only hashes are stored) |
+| **dotenv / cors** | `server/src/config.js`, `app.js` | Reads `server/.env`; CORS only when the frontend is on another domain |
 
 ---
 
@@ -157,28 +182,28 @@ More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ├── client/                     # React + Vite frontend
 │   └── src/
 │       ├── pages/              # Home (create/join), Room
-│       ├── components/         # YouTubePlayer, PlaybackControls, ParticipantList,
-│       │                       # RequestsPanel, Chat, Reactions, VideoForm, Toasts
+│       ├── components/         # YouTubePlayer, PlaybackControls, ParticipantList, RequestsPanel,
+│       │                       # Chat, Reactions, VideoForm, ShareMenu, AuthModal, Toasts, Icons
 │       ├── hooks/useWatchRoom.js   # all Socket.IO logic → React state
-│       └── lib/                # socket, api, youtube helpers, storage
+│       └── lib/                # socket, api, auth, youtube helpers, storage
 ├── server/                     # Node.js + Express + Socket.IO backend
-│   ├── src/
-│   │   ├── core/               # Room, Participant, PlaybackState, RoomManager, permissions
-│   │   ├── socket/MessageHandler.js
-│   │   ├── db/                 # Mongoose model + repositories (Mongo / in-memory)
-│   │   ├── routes/api.js       # REST endpoints
-│   │   ├── app.js              # wires Express + Socket.IO
-│   │   └── index.js            # entry point
-│   └── test/                   # node:test unit + WebSocket integration tests
-├── docs/                       # architecture + code-walkthrough notes
-└── render.yaml                 # one-click Render deployment
+│   └── src/
+│       ├── core/               # Room, Participant, PlaybackState, RoomManager, permissions
+│       ├── socket/MessageHandler.js
+│       ├── auth/               # signup/login, JWT, password hashing
+│       ├── db/                 # Mongoose models + repositories (MongoDB / in-memory)
+│       ├── routes/             # REST endpoints
+│       ├── app.js              # wires Express + Socket.IO
+│       └── index.js            # entry point, graceful shutdown
+├── docs/ARCHITECTURE.md        # architecture + code-walkthrough notes
+└── railway.json                # Railway build/deploy settings
 ```
 
 ---
 
 ## 🚀 Run locally
 
-**Prerequisites:** Node.js ≥ 20 and MongoDB (local install, Docker, or a free MongoDB Atlas cluster).
+**Prerequisites:** Node.js ≥ 20. MongoDB is optional: local, Docker, Atlas, or none (in-memory).
 
 ```bash
 # 1. Install dependencies (root, server and client)
@@ -186,70 +211,76 @@ npm install
 npm run install:all
 
 # 2. Configure the server
-cp server/.env.example server/.env      # edit MONGODB_URI if needed
+cp server/.env.example server/.env      # set MONGODB_URI, or leave it empty for in-memory storage
 
 # 3. Start backend (http://localhost:4000) + frontend (http://localhost:5173) with hot reload
 npm run dev
 ```
 
-Open **http://localhost:5173**, create a room, and open the invite link in another browser (or an incognito window) to join as a second user.
+Open **http://localhost:5173**, sign up, create a room, and open the invite link in another browser (or an incognito window) to join as a second user.
 
-> No MongoDB handy? Start one with `docker run -d -p 27017:27017 mongo:7`, or leave `MONGODB_URI` empty to run with in-memory storage.
+> No MongoDB handy? `docker run -d -p 27017:27017 mongo:7`, or leave `MONGODB_URI` empty to use in-memory storage (data is lost on restart).
 
-**Production mode locally** (exactly what the server runs in the cloud):
+**Production mode locally** (exactly what Railway runs):
 
 ```bash
 npm run build     # installs everything and builds the React app into client/dist
 npm start         # Express serves the API, the WebSocket server and the React build on :4000
 ```
 
-**Tests** (unit tests for roles/permissions/sync + an end-to-end test over real WebSockets):
-
-```bash
-npm test
-```
-
 ### Environment variables (`server/.env`)
 
 | Variable             | Default                | Purpose                                                               |
 | -------------------- | ---------------------- | --------------------------------------------------------------------- |
-| `PORT`               | `4000`                 | HTTP + WebSocket port (set automatically by Render/Railway)            |
+| `PORT`               | `4000`                 | HTTP + WebSocket port (Railway sets it automatically)                 |
+| `NODE_ENV`           | `development`          | Set to `production` in the cloud                                      |
 | `MONGODB_URI`        | _(empty → in-memory)_  | MongoDB connection string                                             |
-| `JWT_SECRET`         | _(random in dev)_      | Secret for signing login tokens — **required in production**          |
+| `JWT_SECRET`         | _(random in dev)_      | Secret for signing login tokens. **Required in production**           |
 | `CLIENT_ORIGIN`      | _(empty)_              | Only if the frontend is on another domain (enables CORS for it)       |
 | `RECONNECT_GRACE_MS` | `15000`                | How long a disconnected user keeps their seat/role                    |
-| `VITE_SERVER_URL`    | _(empty)_              | **Client** build var — backend URL if frontend is hosted separately   |
+| `VITE_SERVER_URL`    | _(empty)_              | **Client** build var: backend URL if the frontend is hosted separately |
 
 ---
 
-## ☁️ Deployment
+## ☁️ Deployment (Railway)
 
-The app deploys as **one Render web service**: Express serves the REST API, the Socket.IO WebSocket server and the built React app from the same URL (no CORS, WebSockets work out of the box).
+The app runs as **one Railway service**: same origin for the page, the API and the WebSocket, so there's no CORS setup, and Railway's proxy supports WebSockets out of the box. Build and start settings live in [`railway.json`](railway.json):
 
-1. **MongoDB Atlas** (free): create an M0 cluster → *Database Access*: add a user → *Network Access*: allow `0.0.0.0/0` → *Connect → Drivers*: copy the URI, e.g.
-   `mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/watch-party?retryWrites=true&w=majority`
-2. **Push this repo to GitHub.**
-3. **Render** → *New* → *Blueprint* → pick the repo (it reads [`render.yaml`](render.yaml)).
-   Or *New → Web Service* manually with:
-   - Build command: `npm run build`
-   - Start command: `npm start`
-   - Environment: `NODE_ENV=production`, `MONGODB_URI=<your Atlas URI>`, `JWT_SECRET=<long random string>` (the Blueprint generates this one for you)
-4. Open `https://<your-app>.onrender.com/api/health` → should return `"storage": "mongodb"`.
-5. Put the live URL at the top of this README.
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run build` (installs server + client deps, builds React into `client/dist`) |
+| Start command | `npm start` (runs `server/src/index.js`) |
+| Health check | `GET /api/health`: a new deploy only receives traffic once this returns 200 |
+| Restart policy | On failure, up to 5 retries |
 
-> **Free-tier note:** Render's free instances sleep after ~15 min of inactivity; the first request takes ~30–50 s to wake up. Rooms are stored in MongoDB, so nothing is lost.
+**Steps**
 
-**Railway** works the same way (build `npm run build`, start `npm start`, add `MONGODB_URI`).
-**Split hosting** (Vercel/Netlify frontend + Render backend): build the client with `VITE_SERVER_URL=https://<backend>` and set `CLIENT_ORIGIN=https://<frontend>` on the backend.
+1. Push the repo to GitHub.
+2. **Railway → New Project → Deploy from GitHub repo** → pick this repo. Railway reads `railway.json` and injects `PORT`.
+3. Add a database: **+ New → Database → MongoDB** (or use a free MongoDB Atlas cluster).
+4. In the web service → **Variables**, add:
+   - `NODE_ENV` = `production`
+   - `JWT_SECRET` = a long random string (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+   - `MONGODB_URI` = `${{MongoDB.MONGO_URL}}` (a reference to Railway's MongoDB service) or your Atlas URI
+5. **Settings → Networking → Generate Domain** to get the public URL.
+6. Check `https://<your-domain>/api/health`. It should report `"storage": "mongodb"`. If it says `"memory"`, `MONGODB_URI` isn't set and data won't survive a redeploy.
+
+**Deployment notes**
+
+- Railway sends `SIGTERM` on every redeploy; the server flushes all unsaved room state to MongoDB before exiting (`server/src/index.js`).
+- `app.set('trust proxy', 1)` so per-IP rate limits see the real client IP behind Railway's proxy.
+- In production the server refuses to start without `JWT_SECRET`, and exits if `MONGODB_URI` is set but MongoDB is unreachable. It fails loudly instead of silently losing data.
+- **Split hosting** (e.g. Netlify frontend + Railway backend) also works: build the client with `VITE_SERVER_URL=https://<backend>` and set `CLIENT_ORIGIN=https://<frontend>` on the backend.
 
 ---
 
 ## ⚖️ Design decisions & trade-offs
 
-- **Server is the single source of truth.** Clients never trust each other's players; they only apply `sync_state`. This makes role enforcement trivial and prevents "echo loops" where two players keep correcting each other.
-- **Custom controls instead of YouTube's.** The native YouTube UI can't be permission-checked, so it's hidden and blocked; our control bar routes through the server (or becomes a *request* for Participants).
-- **Autoplay policy.** Browsers block autoplay with sound until the user interacts, so each viewer clicks once ("Click to join playback"), then stays in sync automatically.
-- **Login required.** Every room member is a registered account (JWT verified on REST and in the WebSocket handshake), so a removed user can't simply rejoin under a new name. Inside a room, a per-room session token (only its SHA-256 hash is stored) additionally restores the exact seat after a refresh. Passwords are hashed with **scrypt** (built into Node, salted, constant-time comparison); the JWT is stored in `localStorage` for simplicity — an httpOnly cookie would be more XSS-resistant.
+- **Server is the single source of truth.** Clients never trust each other's players; they only apply `sync_state`. This keeps role enforcement simple and prevents "echo loops" where two players keep correcting each other.
+- **Custom controls instead of YouTube's.** The native YouTube UI can't be permission-checked, so it's hidden and blocked; our control bar goes through the server, or becomes a *request* for Participants.
+- **Participant vs Viewer.** The brief allows Viewer as an alias for Participant. Here, Participants can *request* changes (the approval flow), while Viewers are strictly watch-only, so the host can choose either.
+- **Autoplay policy.** Browsers block autoplay with sound until the user interacts, so each viewer clicks once ("Join playback") and then stays in sync automatically.
+- **Login required.** Every room member is a registered account (JWT verified on REST and in the WebSocket handshake), so a removed user can't rejoin under a new name. A per-room session token (only its SHA-256 hash is stored) restores the exact seat after a refresh. Passwords are hashed with **scrypt**. The JWT is kept in `localStorage` for simplicity; an httpOnly cookie would be more XSS-resistant.
 - **Debounced persistence.** State changes are saved to MongoDB at most every ~0.75 s per room, so a burst of seeks costs one write. Pending approval requests are intentionally in-memory only.
 - **Reconnect grace period.** A refresh or network blip doesn't kick you out or trigger a host hand-over; you're shown as *reconnecting* for 15 s.
-- **Scaling beyond one instance.** Live room state is in memory on the instance that holds the room. To run many instances you'd add the Socket.IO **Redis adapter** for cross-instance broadcasts **plus** room-affinity (route all members of a room to the same instance, e.g. consistent hashing on `roomId`) or move `PlaybackState` into Redis. A single Node instance comfortably handles hundreds of concurrent sockets for this workload.
+- **Scaling beyond one instance.** Live room state is held in memory by the instance that owns the room, so this deployment runs a single Railway instance, which comfortably handles hundreds of concurrent sockets for this workload. To reach the brief's 1,000+ users / 100+ rooms target across several instances, you'd add the **Socket.IO Redis adapter** for cross-instance broadcasts, plus room affinity (route every member of a room to the same instance, e.g. hashing on `roomId`) or move `PlaybackState` into Redis.

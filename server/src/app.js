@@ -17,7 +17,7 @@ import { RoomError } from './utils/errors.js';
  */
 export function createServer({ repositories, jwtSecret, clientDist, clientOrigins = null, graceMs, idleUnloadMs }) {
   const app = express();
-  app.set('trust proxy', 1); // behind Render/Railway's proxy: req.ip is the real client IP
+  app.set('trust proxy', 1); // behind Railway's proxy: req.ip is the real client IP
   app.disable('x-powered-by');
   app.use(express.json({ limit: '10kb' }));
   if (clientOrigins) app.use(cors({ origin: clientOrigins }));

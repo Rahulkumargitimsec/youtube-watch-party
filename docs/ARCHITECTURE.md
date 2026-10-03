@@ -90,7 +90,7 @@ On the server, `optionalAuth` (REST) and an `io.use()` middleware (WebSockets) v
 | `routes/api.js`                        | REST: create room, room summary, health check. |
 | `app.js` / `index.js`                  | Wiring (Express + HTTP server + Socket.IO) and process lifecycle. |
 
-Why separate `Room` from `MessageHandler`? The `Room` has no idea Socket.IO events exist — it exposes plain methods (`room.seek(userId, time)`) that throw `RoomError`s. That makes it **unit-testable** without sockets (see `test/room.test.js`) and keeps permission checks in one place no matter how the method is called.
+Why separate `Room` from `MessageHandler`? The `Room` has no idea Socket.IO events exist — it exposes plain methods (`room.seek(userId, time)`) that throw `RoomError`s. That makes it easy to unit-test without sockets and keeps permission checks in one place no matter how the method is called.
 
 ---
 
@@ -147,7 +147,7 @@ Why separate `Room` from `MessageHandler`? The `Room` has no idea Socket.IO even
 - **Rate limiting** per socket (general, chat, reactions, joins) and per IP for room creation.
 - `maxHttpBufferSize` 100 KB and `express.json({ limit: '10kb' })`.
 - Removed users are flagged `removed` — their token can't rejoin; their sockets are forcibly detached from the room channels.
-- Graceful shutdown (`SIGTERM` from Render) flushes all rooms to MongoDB before exit.
+- Graceful shutdown (`SIGTERM` from Railway on every redeploy) flushes all rooms to MongoDB before exit.
 
 ---
 

@@ -1,5 +1,5 @@
 // Empty in dev/production (same origin). Set VITE_SERVER_URL only when the backend
-// lives on a different domain (e.g. frontend on Netlify, backend on Render).
+// lives on a different domain (e.g. frontend on Netlify, backend on Railway).
 export const SERVER_URL = import.meta.env.VITE_SERVER_URL?.replace(/\/$/, '') || '';
 
 // Login token (JWT), set by AuthProvider. Sent as `Authorization: Bearer <token>`.

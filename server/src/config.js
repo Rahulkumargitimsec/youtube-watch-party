@@ -25,7 +25,7 @@ export const config = Object.freeze({
   mongoUri: process.env.MONGODB_URI || '',
   // Secret used to sign login tokens (JWT). Must be a long random string in production.
   jwtSecret: jwtSecret(),
-  // Only needed when the frontend is hosted on a different origin (e.g. Netlify + Render).
+  // Only needed when the frontend is hosted on a different origin (e.g. Netlify + Railway).
   clientOrigins: splitList(process.env.CLIENT_ORIGIN),
   // How long a disconnected user keeps their seat (page refresh, flaky network).
   reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || 15_000,
