@@ -115,7 +115,7 @@ Why separate `Room` from `MessageHandler`? The `Room` has no idea Socket.IO even
 
 ## 4. Synchronization algorithm (client)
 
-`client/src/components/YouTubePlayer.jsx → syncToRoom(threshold)`
+`frontend/src/components/YouTubePlayer.jsx → syncToRoom(threshold)`
 
 1. **Expected time:** `expectedTime(playback, clockOffset)` = `currentTime + (Date.now() + offset − serverTime)/1000` when playing.
 2. **New video?** `loadVideoById` (playing) or `cueVideoById` (paused) with `startSeconds = expected`.

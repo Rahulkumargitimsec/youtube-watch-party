@@ -1,6 +1,6 @@
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-/** Same parsing rules as the server (server/src/utils/youtube.js). */
+/** Same parsing rules as the server (backend/src/utils/youtube.js). */
 export function extractVideoId(input) {
   if (typeof input !== 'string') return null;
   const value = input.trim();

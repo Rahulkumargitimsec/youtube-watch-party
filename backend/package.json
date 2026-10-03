@@ -1,5 +1,5 @@
 {
-  "name": "watch-party-server",
+  "name": "watch-party-backend",
   "version": "1.0.0",
   "private": true,
   "description": "Real-time YouTube Watch Party backend (Express + Socket.IO + MongoDB)",

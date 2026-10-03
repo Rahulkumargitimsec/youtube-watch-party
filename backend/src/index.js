@@ -11,7 +11,7 @@ async function main() {
   const { httpServer, io, manager } = createServer({
     repositories,
     jwtSecret: config.jwtSecret,
-    clientDist: path.resolve(__dirname, '../../client/dist'),
+    clientDist: path.resolve(__dirname, '../../frontend/dist'),
     clientOrigins: config.clientOrigins,
     graceMs: config.reconnectGraceMs,
     idleUnloadMs: config.idleRoomUnloadMs,

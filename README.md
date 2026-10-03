@@ -37,7 +37,7 @@ How each requirement of the brief is met:
 | Host can **transfer host** | `transfer_host` → `host_transferred` (also automatic if the host leaves) |
 | Playback controls restricted to **Host and Moderator** | `authorize(actor, CONTROL_PLAYBACK / CHANGE_VIDEO)` in `Room`; others get `FORBIDDEN` |
 | **Participant must request approval** for changes | `request_change` → queued → Host/Moderator `resolve_request` approves or declines |
-| **Backend validates permissions** before processing | `server/src/core/permissions.js` + `Room` methods; the UI also disables restricted controls |
+| **Backend validates permissions** before processing | `backend/src/core/permissions.js` + `Room` methods; the UI also disables restricted controls |
 | **Role updates broadcast** so the UI can show roles | `role_assigned`, `host_transferred`, `participants_update` |
 | Participant list with roles | People tab: roles, online/reconnecting status, host management menu |
 | Basic chat (bonus) | Room chat with history |
@@ -161,17 +161,17 @@ More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Library / tool | Where | What it does here |
 | --- | --- | --- |
-| **React** | `client/src` | UI as components; `useWatchRoom` turns socket events into React state |
-| **Vite** | `client/` | Dev server with hot reload; production build into `client/dist`. In dev it proxies `/api` and `/socket.io` to the Node server |
-| **React Router** | `client/src/main.jsx` | `/` (create/join) and `/room/:roomId` (invite links) |
-| **socket.io-client** | `client/src/lib/socket.js` | Opens the WebSocket, sends the JWT in the handshake, auto-reconnects, `emitWithAck` for request/response |
-| **YouTube IFrame API** | `client/src/components/YouTubePlayer.jsx` | Embeds the player and applies `sync_state` (`loadVideoById`, `seekTo`, `playVideo`, `pauseVideo`) |
-| **Express 5** | `server/src/app.js`, `routes/` | REST API and serves the built React app |
-| **Socket.IO** | `server/src/app.js`, `socket/MessageHandler.js` | WebSocket server; Socket.IO rooms (`io.to(roomId)`) for broadcasting; acknowledgements for every event |
-| **Mongoose / MongoDB** | `server/src/db/` | Users and rooms (state, members, roles, chat); TTL index expires idle rooms |
-| **jsonwebtoken** | `server/src/auth/` | Signs and verifies login tokens (REST + WebSocket handshake) |
-| **node:crypto** | `server/src/auth/` | `scrypt` password hashing, random session tokens (only hashes are stored) |
-| **dotenv / cors** | `server/src/config.js`, `app.js` | Reads `server/.env`; CORS only when the frontend is on another domain |
+| **React** | `frontend/src` | UI as components; `useWatchRoom` turns socket events into React state |
+| **Vite** | `frontend/` | Dev server with hot reload; production build into `frontend/dist`. In dev it proxies `/api` and `/socket.io` to the Node server |
+| **React Router** | `frontend/src/main.jsx` | `/` (create/join) and `/room/:roomId` (invite links) |
+| **socket.io-client** | `frontend/src/lib/socket.js` | Opens the WebSocket, sends the JWT in the handshake, auto-reconnects, `emitWithAck` for request/response |
+| **YouTube IFrame API** | `frontend/src/components/YouTubePlayer.jsx` | Embeds the player and applies `sync_state` (`loadVideoById`, `seekTo`, `playVideo`, `pauseVideo`) |
+| **Express 5** | `backend/src/app.js`, `routes/` | REST API and serves the built React app |
+| **Socket.IO** | `backend/src/app.js`, `socket/MessageHandler.js` | WebSocket server; Socket.IO rooms (`io.to(roomId)`) for broadcasting; acknowledgements for every event |
+| **Mongoose / MongoDB** | `backend/src/db/` | Users and rooms (state, members, roles, chat); TTL index expires idle rooms |
+| **jsonwebtoken** | `backend/src/auth/` | Signs and verifies login tokens (REST + WebSocket handshake) |
+| **node:crypto** | `backend/src/auth/` | `scrypt` password hashing, random session tokens (only hashes are stored) |
+| **dotenv / cors** | `backend/src/config.js`, `app.js` | Reads `backend/.env`; CORS only when the frontend is on another domain |
 
 ---
 
@@ -179,14 +179,14 @@ More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ```
 .
-├── client/                     # React + Vite frontend
+├── frontend/                   # React + Vite frontend
 │   └── src/
 │       ├── pages/              # Home (create/join), Room
 │       ├── components/         # YouTubePlayer, PlaybackControls, ParticipantList, RequestsPanel,
 │       │                       # Chat, Reactions, VideoForm, ShareMenu, AuthModal, Toasts, Icons
 │       ├── hooks/useWatchRoom.js   # all Socket.IO logic → React state
 │       └── lib/                # socket, api, auth, youtube helpers, storage
-├── server/                     # Node.js + Express + Socket.IO backend
+├── backend/                    # Node.js + Express + Socket.IO backend
 │   └── src/
 │       ├── core/               # Room, Participant, PlaybackState, RoomManager, permissions
 │       ├── socket/MessageHandler.js
@@ -206,12 +206,12 @@ More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 **Prerequisites:** Node.js ≥ 20. MongoDB is optional: local, Docker, Atlas, or none (in-memory).
 
 ```bash
-# 1. Install dependencies (root, server and client)
+# 1. Install dependencies (root, backend and frontend)
 npm install
 npm run install:all
 
 # 2. Configure the server
-cp server/.env.example server/.env      # set MONGODB_URI, or leave it empty for in-memory storage
+cp backend/.env.example backend/.env     # set MONGODB_URI, or leave it empty for in-memory storage
 
 # 3. Start backend (http://localhost:4000) + frontend (http://localhost:5173) with hot reload
 npm run dev
@@ -224,11 +224,11 @@ Open **http://localhost:5173**, sign up, create a room, and open the invite link
 **Production mode locally** (exactly what Railway runs):
 
 ```bash
-npm run build     # installs everything and builds the React app into client/dist
+npm run build     # installs everything and builds the React app into frontend/dist
 npm start         # Express serves the API, the WebSocket server and the React build on :4000
 ```
 
-### Environment variables (`server/.env`)
+### Environment variables (`backend/.env`)
 
 | Variable             | Default                | Purpose                                                               |
 | -------------------- | ---------------------- | --------------------------------------------------------------------- |
@@ -248,8 +248,8 @@ The app runs as **one Railway service**: same origin for the page, the API and t
 
 | Setting | Value |
 | --- | --- |
-| Build command | `npm run build` (installs server + client deps, builds React into `client/dist`) |
-| Start command | `npm start` (runs `server/src/index.js`) |
+| Build command | `npm run build` (installs backend + frontend deps, builds React into `frontend/dist`) |
+| Start command | `npm start` (runs `backend/src/index.js`) |
 | Health check | `GET /api/health`: a new deploy only receives traffic once this returns 200 |
 | Restart policy | On failure, up to 5 retries |
 
@@ -267,7 +267,7 @@ The app runs as **one Railway service**: same origin for the page, the API and t
 
 **Deployment notes**
 
-- Railway sends `SIGTERM` on every redeploy; the server flushes all unsaved room state to MongoDB before exiting (`server/src/index.js`).
+- Railway sends `SIGTERM` on every redeploy; the server flushes all unsaved room state to MongoDB before exiting (`backend/src/index.js`).
 - `app.set('trust proxy', 1)` so per-IP rate limits see the real client IP behind Railway's proxy.
 - In production the server refuses to start without `JWT_SECRET`, and exits if `MONGODB_URI` is set but MongoDB is unreachable. It fails loudly instead of silently losing data.
 - **Split hosting** (e.g. Netlify frontend + Railway backend) also works: build the client with `VITE_SERVER_URL=https://<backend>` and set `CLIENT_ORIGIN=https://<frontend>` on the backend.
